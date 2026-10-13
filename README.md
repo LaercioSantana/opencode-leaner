@@ -72,6 +72,9 @@ Register the plugin in your opencode config (e.g. `opencode.json`), pointing at 
 ## Development
 
 ```sh
+# Run the log proxy regression tests
+bun test
+
 # Typecheck
 bunx tsc
 
@@ -79,7 +82,7 @@ bunx tsc
 bun run log-proxy
 ```
 
-There is no test suite yet; validate by loading the plugin in opencode and inspecting the debug context dump or the proxy log.
+The log proxy tests use a local HTTP server and do not call any model providers. Validate plugin changes by loading the plugin in opencode and inspecting the debug context dump or the proxy log.
 
 ### Debug context
 

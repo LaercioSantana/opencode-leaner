@@ -11,4 +11,5 @@
 
 ## Verify
 - Typecheck: `bunx tsc`
-- No test suite yet; validate by loading the plugin in opencode and opencode debug.
+- Log proxy tests: `bun test` (local HTTP fixtures; no model provider required).
+- Validate plugin changes by loading the plugin in opencode and opencode debug.

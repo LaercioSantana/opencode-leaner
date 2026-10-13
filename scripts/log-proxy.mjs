@@ -1,5 +1,7 @@
 import http from "node:http"
 import fs from "node:fs"
+import { Readable, Transform } from "node:stream"
+import { pipeline } from "node:stream/promises"
 
 const PORT = Number(process.env.OPENCODE_LEANER_PROXY_PORT ?? 18077)
 const UPSTREAM = process.env.OPENCODE_LEANER_PROXY_UPSTREAM ?? "http://192.168.2.56:8077/v1"
@@ -31,11 +33,16 @@ const server = http.createServer(async (req, res) => {
   delete headers.host
   delete headers["content-length"]
 
+  if (res.destroyed) return
+  const controller = new AbortController()
+  res.once("close", () => controller.abort())
+
   const upstreamUrl = new URL(req.url, UPSTREAM)
   let upstream
   try {
     upstream = await fetch(upstreamUrl, {
       method: req.method,
+      signal: controller.signal,
       headers,
       body: raw.length > 0 ? Buffer.from(raw) : undefined,
     })
@@ -53,21 +60,32 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  const response = []
+  const streams = [Readable.fromWeb(upstream.body)]
   if (LOG_RESPONSE) {
-    const [logStream, forwardStream] = upstream.body.tee()
-    let response = ""
-    for await (const chunk of logStream) response += Buffer.from(chunk).toString("utf8")
-    fs.appendFileSync(LOG_FILE, `\n--- response (${upstream.status}) ---\n${response}\n`)
-    for await (const chunk of forwardStream) res.write(chunk)
-    res.end()
-  } else {
-    for await (const chunk of upstream.body) res.write(chunk)
-    res.end()
+    streams.push(new Transform({
+      transform(chunk, _encoding, callback) {
+        response.push(chunk)
+        callback(null, chunk)
+      },
+    }))
+  }
+
+  try {
+    // Forward and capture in one pass, honoring backpressure and cancellation.
+    await pipeline(...streams, res)
+    if (LOG_RESPONSE) {
+      const text = Buffer.concat(response).toString("utf8")
+      fs.appendFileSync(LOG_FILE, `\n--- response (${upstream.status}) ---\n${text}\n`)
+    }
+  } catch (err) {
+    // pipeline destroys the response and upstream body on stream errors/disconnects.
+    console.error(`response error: ${err.message}`)
   }
 })
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`log-proxy: http://127.0.0.1:${PORT} -> ${UPSTREAM}`)
+  console.log(`log-proxy: http://127.0.0.1:${server.address().port} -> ${UPSTREAM}`)
   console.log(`logging requests to ${LOG_FILE}`)
   if (LOG_RESPONSE) console.log("logging responses too")
 })

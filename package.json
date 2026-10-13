@@ -5,6 +5,7 @@
   "type": "module",
   "description": "opencode plugin that help you reduce the context size, making it lean and more efficient",
   "scripts": {
+    "test": "bun test",
     "log-proxy": "bun scripts/log-proxy.mjs"
   },
   "devDependencies": {
